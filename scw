@@ -1,0 +1,122 @@
+package com.scw.sports.service;
+
+import com.scw.sports.db.mongo.model.UserFile;
+import com.scw.sports.dto.response.UserResponseDto;
+import com.scw.sports.utils.exception.IncorrectFileException;
+import com.scw.sports.utils.holder.FileStorageConstants;
+import com.scw.sports.utils.holder.Messages;
+import lombok.RequiredArgsConstructor;
+import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
+import org.springframework.web.multipart.MultipartFile;
+
+import java.io.File;
+import java.io.IOException;
+import java.util.Arrays;
+import java.util.List;
+import java.util.stream.Collectors;
+
+@Service
+@RequiredArgsConstructor
+public class AwardsServiceImpl implements AwardsService {
+
+    private final Messages messages;
+
+    private final FileComponent fileComponent;
+
+    private final FileStorageConstants fileStorageConstants;
+
+    private final UserService userService;
+
+    private final String[] FILE_EXTENSIONS_WHITELIST = {
+            "jpg",
+            "jpeg",
+            "pdf"
+    };
+
+    private final String[] MIME_TYPE_WHITELIST = {
+            "image/jpeg",
+            "image/pjpeg",
+            "application/pdf"
+    };
+
+    @Override
+    @Transactional
+    public String saveAward(MultipartFile file, String login) {
+        String extension = fileComponent.getExtension(file);
+        validateMimeType(file.getContentType());
+        validateExtension(extension);
+
+        try {
+            String basePath = getBasePath(login);
+            File directory = new File(basePath);
+            if (!directory.exists()) {
+                directory.mkdir();
+            }
+
+            UserFile saved = fileComponent.saveFile(file, login, basePath);
+            return saved.getOriginalFileName();
+        } catch (IOException e) {
+            throw new RuntimeException("Cannot save file!", e);
+        }
+    }
+
+    @Override
+    @Transactional
+    public void deleteAward(String fileName, String login) {
+        String basePath = getBasePath(login);
+        fileComponent.delete(fileName, login, basePath);
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<String> getAllAwardsNames(String login) {
+        List<UserFile> allUserFiles
+                = fileComponent.getAllUserFiles(login);
+        List<String> result = allUserFiles.stream()
+                .map(UserFile::getOriginalFileName)
+                .collect(Collectors.toList());
+        return result;
+    }
+
+    @Override
+    @Transactional(readOnly = true)
+    public String getAwardName(String awardName, String login) {
+        UserFile userFile
+                = fileComponent.getUserFile(awardName, login);
+        return userFile.getOriginalFileName();
+    }
+
+    private String getBasePath(String login) {
+        UserResponseDto user = userService.getUserByLogin(login);
+        String userId = user.getId();
+        String name = user.getName();
+
+        String basePath = fileStorageConstants.getAwardsBasePath()
+                + File.separator + userId + name;
+        return basePath;
+    }
+
+    private void validateMimeType(String mimeType) {
+        boolean isCorrectMimeType = Arrays.stream(MIME_TYPE_WHITELIST)
+                .anyMatch(t -> t.equals(mimeType));
+
+        if (!isCorrectMimeType) {
+            throw new IncorrectFileException(
+                    messages.getIncorrectFileType()
+            );
+        }
+    }
+
+    private void validateExtension(String extension) {
+        boolean isCorrectExtension = Arrays.stream(FILE_EXTENSIONS_WHITELIST)
+                .anyMatch(e -> e.equals(extension));
+
+        if (!isCorrectExtension) {
+            throw new IncorrectFileException(
+                    messages.getIncorrectFileType()
+            );
+        }
+    }
+
+}
