@@ -1,0 +1,2 @@
+        String basePath = fileStorageConstants.getAwardsBasePath()
+                + File.separator + userId + name;
